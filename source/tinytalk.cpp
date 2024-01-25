@@ -1,0 +1,183 @@
+﻿#include "tinytalk.h"
+
+TinyTalk::TinyTalk(int port)
+{
+	user = new UserData;
+
+	this->port = port;
+	this->sockfd = -1;
+}
+
+TinyTalk::~TinyTalk()
+{
+	if (user != nullptr)
+	{
+		delete user;
+	}
+	if (sockfd != -1)
+	{
+		close(sockfd);
+		sockfd = -1;
+	}
+}
+
+bool TinyTalk::createTCPServer()
+{
+	// create TCP socket server: SOCK_STREAM
+	if ((sockfd = socket(AF_INET, SOCK_STREAM, 0)) == -1)
+	{
+		std::cout << "ERROR: Failed to create a socket." << std::endl;
+		return false;
+	}
+	// 启用端口复用 SO_REUSEADDR
+	int opt = 1;
+	setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
+	
+	// 设置服务器协议，端口和地址
+	struct sockaddr_in sa;
+	memset(&sa, 0, sizeof(sa));
+	sa.sin_family = AF_INET;
+	sa.sin_port = htons(port);
+	sa.sin_addr.s_addr = htonl(INADDR_ANY);
+
+	// 将 sockfd 绑定到服务器地址
+	if (bind(sockfd, (struct sockaddr*)&sa, sizeof(sa)) == -1)
+	{
+		std::cout << "Failed to bind sockfd to the server address." << std::endl;
+		return false;
+	}
+	if (listen(sockfd, 511) == -1)
+	{
+		std::cout << "ERROR: Failed to listen on sockfd." << std::endl;
+		return false;
+	}
+	return true;
+}
+
+int TinyTalk::acceptUser(struct sockaddr_in &sa)
+{
+	int userSockfd;
+	while (1)
+	{
+		socklen_t slen = sizeof(sa);
+		userSockfd = accept(sockfd, (struct sockaddr*)&sa, &slen);
+		if (userSockfd == -1)
+		{
+			if (errno == EINTR)
+			{
+				continue;
+			}
+			else
+			{
+				std::cout << "ERROR: Failed to accept a connection on the socket." << std::endl;
+				return -1;
+			}
+		}
+		break;
+	}
+	return userSockfd;
+}
+
+void TinyTalk::welcomeMSG(int fd)
+{
+	std::string msg = "Welcome to TinyTalk!\n"
+		"Use /q to exit.\n    /n <name> to set your name.\n";
+	write(fd, msg.c_str(), strlen(msg.c_str()));
+	std::cout << "server>>" << "Connected client fd = " << fd << std::endl;
+}
+
+void TinyTalk::exitMSG(int fd)
+{
+	std::string msg = "TinyTalk:Bye-Bye!\n";
+	write(fd, msg.c_str(), strlen(msg.c_str()));
+	std::cout << "Server has exited" << std::endl;
+}
+
+void TinyTalk::addUser(const int fd, const std::string ip)
+{
+	user->setFD(fd);
+	user->setName(std::to_string(fd));
+	user->setAddr(ip);
+}
+
+void TinyTalk::run()
+{
+	// 欢迎界面
+	std::cout << "Hello!\tWelcome to TinyTalk!" << std::endl;
+
+	// 使用说明
+	// this->usage();
+
+	/*
+	*  创建 TCP 服务器
+	*  1. 使用 socket() 函数创建 socket
+	*  2. 使用 bind() 函数将该 socket 绑定到服务器地址上
+	*  3. 使用 listen() 函数将该 socket 标记为被动套接字
+	*/
+	if (!this->createTCPServer())
+	{
+		std::cout << "ERROR: Failed to create TCP server." << std::endl;
+		return;
+	}
+
+	// 等待客户端主动连接服务器
+	struct sockaddr_in sa;
+	memset(&sa, 0, sizeof(sa));
+	int userSockfd = acceptUser(sa);
+	if (userSockfd == -1)
+	{
+		return;
+	}
+	
+	if (userSockfd != -1)
+	{
+		// 给客户端发送欢迎消息
+		welcomeMSG(userSockfd);
+		// 保存客户端信息
+		addUser(userSockfd, inet_ntoa(sa.sin_addr));
+	}
+
+	while (1)
+	{
+		char readbuf[512];
+		memset(&readbuf, 0, sizeof(readbuf));
+		// 读取客户端发送的信息
+		int nread = read(user->getFD(), readbuf, sizeof(readbuf) - 1);
+		if (nread <= 0)
+		{
+			std::cout << "User has disconnected!!!" << std::endl;
+		}
+		else
+		{
+			// 去除末尾的多余符号
+			for (int i = nread - 1; i > 0; --i)
+			{
+				if (readbuf[i] == '\n' || readbuf[i] == '\r')
+				{
+					readbuf[i] = 0;
+				}
+				else
+				{
+					break;
+				}
+			}
+			if (readbuf[0] == '/' && readbuf[1] == 'q')
+			{
+				break;
+			}
+			else if (readbuf[0] == '/' && readbuf[1] == 'n')
+			{
+				std::string name(&readbuf[3]);
+				user->setName(name);
+				std::cout << "$$$ client " << user->getFD() << " has set a new name: " 
+							<< user->getName() <<" $$$" << std::endl;
+			}
+			else
+			{
+				std::cout << user->getName() << ": ";
+				std::cout << readbuf << std::endl;
+			}
+		}
+	}
+	exitMSG(userSockfd);
+}
