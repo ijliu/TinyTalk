@@ -149,35 +149,91 @@ void TinyTalk::run()
 		}
 		else
 		{
-			// 去除末尾的多余符号
-			for (int i = nread - 1; i > 0; --i)
+			std::string message;
+			int index = parseCommand(readbuf, nread - 1, message);
+			if (!index) break;
+			switch (index)
 			{
-				if (readbuf[i] == '\n' || readbuf[i] == '\r')
-				{
-					readbuf[i] = 0;
-				}
-				else
-				{
-					break;
-				}
-			}
-			if (readbuf[0] == '/' && readbuf[1] == 'q')
+			case -2: 
 			{
+				std::string errorInfo = "ERROR\n";
+				write(user->getFD(), errorInfo.c_str(), strlen(errorInfo.c_str()));
 				break;
 			}
-			else if (readbuf[0] == '/' && readbuf[1] == 'n')
+			case -1: 
 			{
-				std::string name(&readbuf[3]);
-				user->setName(name);
-				std::cout << "$$$ client " << user->getFD() << " has set a new name: " 
-							<< user->getName() <<" $$$" << std::endl;
+				std::string errorInfo = "ERROR\n";
+				write(user->getFD(), errorInfo.c_str(), strlen(errorInfo.c_str()));
+				break;
 			}
-			else
+			case 0: break;
+			case 1: 
 			{
 				std::cout << user->getName() << ": ";
-				std::cout << readbuf << std::endl;
+				std::cout << message << std::endl;
+				break;
+			}
+			case 2: 
+			{
+				user->setName(message);
+				std::cout << "$$$ client " << user->getFD() << " has set a new name: "
+					<< user->getName() << " $$$" << std::endl;
+				break;
+			}
+			default:
+				break;
 			}
 		}
 	}
 	exitMSG(userSockfd);
+}
+
+int TinyTalk::parseCommand(const char* command, const int length, std::string &context)
+{
+	/*
+	*  -1: 消息不是以\n结尾
+	*  -2: 指令没有参数
+	*  0: 退出
+	*  1: 发送
+	*  2: 设置名称
+	*/
+
+	// 去除末尾的多余符号
+	std::string commandStr(command);
+	std::size_t found = (commandStr.find("\r\n") == std::string::npos)? commandStr.find("\n") : commandStr.find("\r\n");
+	if (found == std::string::npos)
+	{
+		std::cout << "ERROR: " << std::endl;
+		return -1;
+	}
+	commandStr = commandStr.substr(0, found);
+
+	// 指令模式
+	if (commandStr[0] == '/')
+	{
+		// 分割指令和内容
+		std::size_t separator = commandStr.find(" ");
+		if (separator == std::string::npos)
+		{
+			if (commandStr.find("exit") == 1)
+			{
+				return 0;
+			}
+			std::cout << "ERROR: " << std::endl;
+			return -2;
+		}
+		std::string commandName = commandStr.substr(1, separator - 1);
+		context = commandStr.substr(separator + 1, found);
+		if (commandName == "name")
+		{
+			return 2;
+		}
+		else
+		{
+			return -2;
+		}
+	}
+	// 发送模式
+	context = commandStr;
+	return 1;
 }
