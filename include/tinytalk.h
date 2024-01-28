@@ -17,7 +17,7 @@ public:
 	~TinyTalk();
 
 	bool createTCPServer();
-	int acceptUser(struct sockaddr_in &sa);
+	int acceptUser(struct sockaddr_in &userAddr);
 	void welcomeMSG(int fd);
 	void exitMSG(int fd);
 	void addUser(const int fd, const std::string ip);

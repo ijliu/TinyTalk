@@ -54,13 +54,13 @@ bool TinyTalk::createTCPServer()
 	return true;
 }
 
-int TinyTalk::acceptUser(struct sockaddr_in &sa)
+int TinyTalk::acceptUser(struct sockaddr_in &userAddr)
 {
 	int userSockfd;
 	while (1)
 	{
-		socklen_t slen = sizeof(sa);
-		userSockfd = accept(sockfd, (struct sockaddr*)&sa, &slen);
+		socklen_t slen = sizeof(userAddr);
+		userSockfd = accept(sockfd, (struct sockaddr*)&userAddr, &slen);
 		if (userSockfd == -1)
 		{
 			if (errno == EINTR)
