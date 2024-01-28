@@ -69,7 +69,6 @@ int TinyTalk::acceptUser(struct sockaddr_in &sa)
 			}
 			else
 			{
-				std::cout << "ERROR: Failed to accept a connection on the socket." << std::endl;
 				return -1;
 			}
 		}
@@ -81,9 +80,10 @@ int TinyTalk::acceptUser(struct sockaddr_in &sa)
 void TinyTalk::welcomeMSG(int fd)
 {
 	std::string msg = "Welcome to TinyTalk!\n"
-		"Use /q to exit.\n    /n <name> to set your name.\n";
+		"Use /exit to exit.\n"
+		"    /name <name> to set your name.\n";
 	write(fd, msg.c_str(), strlen(msg.c_str()));
-	std::cout << "server>>" << "Connected client fd = " << fd << std::endl;
+	std::cout << "Successfully connected to a client (client fd = " << fd  << ")" << std::endl;
 }
 
 void TinyTalk::exitMSG(int fd)
@@ -104,9 +104,7 @@ void TinyTalk::run()
 {
 	// 欢迎界面
 	std::cout << "Hello!\tWelcome to TinyTalk!" << std::endl;
-
-	// 使用说明
-	// this->usage();
+	std::cout << "TinyTalk is running on port " << this->port << std::endl;
 
 	/*
 	*  创建 TCP 服务器
@@ -121,24 +119,23 @@ void TinyTalk::run()
 	}
 
 	// 等待客户端主动连接服务器
-	struct sockaddr_in sa;
-	memset(&sa, 0, sizeof(sa));
-	int userSockfd = acceptUser(sa);
+	struct sockaddr_in userAddr;
+	memset(&userAddr, 0, sizeof(userAddr));
+	int userSockfd = acceptUser(userAddr);
 	if (userSockfd == -1)
 	{
+		std::cout << "ERROR: Failed to accept a connection on the socket." << std::endl;
 		return;
 	}
-	
-	if (userSockfd != -1)
-	{
-		// 给客户端发送欢迎消息
-		welcomeMSG(userSockfd);
-		// 保存客户端信息
-		addUser(userSockfd, inet_ntoa(sa.sin_addr));
-	}
+
+	// 给客户端发送欢迎消息
+	welcomeMSG(userSockfd);
+	// 保存客户端信息
+	addUser(userSockfd, inet_ntoa(userAddr.sin_addr));
 
 	while (1)
 	{
+		// 设置读取客户端的缓冲区
 		char readbuf[512];
 		memset(&readbuf, 0, sizeof(readbuf));
 		// 读取客户端发送的信息
@@ -156,20 +153,20 @@ void TinyTalk::run()
 			{
 			case -2: 
 			{
-				std::string errorInfo = "ERROR\n";
+				std::string errorInfo = "ERROR: Invalid command or incorrect command usage.\n";
 				write(user->getFD(), errorInfo.c_str(), strlen(errorInfo.c_str()));
 				break;
 			}
 			case -1: 
 			{
-				std::string errorInfo = "ERROR\n";
+				std::string errorInfo = "ERROR: Received message is invalid.\n";
 				write(user->getFD(), errorInfo.c_str(), strlen(errorInfo.c_str()));
 				break;
 			}
 			case 0: break;
 			case 1: 
 			{
-				std::cout << user->getName() << ": ";
+				std::cout << user->getName() << "(" << user->getFD() << ":" << user->getAddr() << ")>>";
 				std::cout << message << std::endl;
 				break;
 			}
@@ -192,7 +189,7 @@ int TinyTalk::parseCommand(const char* command, const int length, std::string &c
 {
 	/*
 	*  -1: 消息不是以\n结尾
-	*  -2: 指令没有参数
+	*  -2: 指令没有参数/不支持该指令
 	*  0: 退出
 	*  1: 发送
 	*  2: 设置名称
@@ -203,7 +200,6 @@ int TinyTalk::parseCommand(const char* command, const int length, std::string &c
 	std::size_t found = (commandStr.find("\r\n") == std::string::npos)? commandStr.find("\n") : commandStr.find("\r\n");
 	if (found == std::string::npos)
 	{
-		std::cout << "ERROR: " << std::endl;
 		return -1;
 	}
 	commandStr = commandStr.substr(0, found);
@@ -219,7 +215,6 @@ int TinyTalk::parseCommand(const char* command, const int length, std::string &c
 			{
 				return 0;
 			}
-			std::cout << "ERROR: " << std::endl;
 			return -2;
 		}
 		std::string commandName = commandStr.substr(1, separator - 1);
